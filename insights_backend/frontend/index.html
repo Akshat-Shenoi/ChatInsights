@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en" class="h-full bg-black">
+  <head>
+    <meta charset="utf-8" />
+    <title>Insights Feed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="h-full text-white">
+    <div class="min-h-full flex justify-center bg-black text-slate-100">
+      <div class="w-full max-w-5xl flex border-x border-slate-800">
+        <aside class="hidden md:flex flex-col w-52 p-4 gap-4 border-r border-slate-800">
+          <div class="text-2xl font-bold">Insights</div>
+          <nav class="flex flex-col gap-2 text-slate-300 text-sm mb-3">
+            <button class="text-left px-3 py-2 rounded-full bg-slate-900 hover:bg-slate-800 font-semibold">Home</button>
+            <div class="mt-2 flex items-center justify-between px-1">
+              <span class="text-xs uppercase tracking-wide text-slate-500">My conversations</span>
+              <button
+                id="new-conversation-btn"
+                class="ml-2 w-6 h-6 flex items-center justify-center rounded-full border border-sky-500/60 text-sky-300 hover:bg-sky-500/10 text-[11px]"
+                title="New conversation"
+              >
+                +
+              </button>
+            </div>
+          </nav>
+          <div id="conversations-list" class="flex-1 flex flex-col gap-1 overflow-y-auto text-sm text-slate-300"></div>
+        </aside>
+
+        <main class="flex-1 border-r border-slate-800 min-h-screen flex flex-col">
+          <header class="sticky top-0 z-10 bg-black/80 backdrop-blur border-b border-slate-800 px-4 py-3 flex items-center justify-between">
+            <h1 class="text-lg font-semibold">Chat with Grok</h1>
+            <span class="text-xs text-slate-500">Live Analysis</span>
+          </header>
+
+          <section id="chat" class="flex-1 flex flex-col overflow-y-auto px-4 py-3 gap-3">
+          </section>
+
+          <section class="border-t border-slate-800 px-4 py-3 flex gap-3 items-end bg-black/80">
+            <div class="flex-1 flex flex-col gap-2">
+              <div class="relative">
+                <input
+                  id="chat-input"
+                  class="w-full bg-black text-slate-100 placeholder-slate-500 border border-slate-700 rounded-full px-4 pr-20 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  placeholder="Send a message..."
+                />
+                <button
+                  id="send-btn"
+                  class="absolute inset-y-1 right-1 px-4 rounded-full bg-white text-black text-sm font-semibold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Send
+                </button>
+              </div>
+              <div class="flex items-center justify-between">
+                <div class="text-xs text-slate-500" id="status-text"></div>
+              </div>
+            </div>
+          </section>
+
+        </main>
+
+        <aside class="hidden lg:block w-96 p-4 space-y-4">
+          <div id="feed" class="flex flex-col gap-2"></div>
+
+          <div class="bg-slate-900 rounded-2xl p-4 text-xs text-slate-300">
+            <h2 class="font-bold mb-2 text-sm">API activity</h2>
+            <div class="flex items-center justify-between mb-1">
+              <span id="api-meta" class="text-[11px]"></span>
+            </div>
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2 overflow-auto max-h-40">
+              <pre id="api-log" class="mt-2 font-mono text-[11px] text-slate-200 whitespace-pre overflow-x-auto"></pre>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 rounded-2xl p-4 text-xs text-slate-300">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <div class="font-semibold text-slate-100 text-sm">History (GET /v1/insights)</div>
+              <button
+                id="history-refresh-btn"
+                class="px-2 py-1 rounded-full border border-sky-500/60 text-sky-300 hover:bg-sky-500/10 text-[11px]"
+              >
+                Refresh
+              </button>
+            </div>
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-2 overflow-auto max-h-48">
+              <pre id="history-log" class="font-mono text-[11px] text-slate-200 whitespace-pre overflow-x-auto"></pre>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 rounded-2xl p-4 text-xs text-slate-300">
+            <h2 class="font-bold mb-2 text-sm">Endpoints</h2>
+            <ul class="space-y-1">
+              <li>
+                <span class="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-emerald-300 mr-1">POST</span>
+                <span class="font-mono text-[11px]">/v1/insights</span>
+              </li>
+              <li>
+                <span class="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-sky-300 mr-1">GET</span>
+                <span class="font-mono text-[11px]">/v1/insights</span>
+              </li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <script>
+      const apiBase = "/v1";
+      const chatEl = document.getElementById("chat");
+      const chatInputEl = document.getElementById("chat-input");
+      const sendBtn = document.getElementById("send-btn");
+      const feedEl = document.getElementById("feed");
+      const statusText = document.getElementById("status-text");
+      const apiLogEl = document.getElementById("api-log");
+      const apiMetaEl = document.getElementById("api-meta");
+      const conversationsListEl = document.getElementById("conversations-list");
+      const newConversationBtn = document.getElementById("new-conversation-btn");
+      const historyRefreshBtn = document.getElementById("history-refresh-btn");
+      const historyLogEl = document.getElementById("history-log");
+
+      let lastRequestBody = null;
+      const messages = [];
+      const conversations = {}; // conversation_id -> { id, title, messages, lastAnalysis }
+      let currentConversationId = null;
+
+      function renderChatMessage(message) {
+        const row = document.createElement("div");
+        row.className = "flex gap-2" + (message.role === "user" ? " justify-end" : "");
+
+        if (message.role !== "user") {
+          const avatar = document.createElement("div");
+          avatar.className = "w-8 h-8 aspect-square rounded-full bg-sky-500 flex items-center justify-center text-xs font-semibold";
+          avatar.textContent = "AI";
+          row.appendChild(avatar);
+        }
+
+        const bubble = document.createElement("div");
+        bubble.className =
+          "max-w-[75%] rounded-2xl px-3 py-2 text-sm " +
+          (message.role === "user"
+            ? "bg-white text-black rounded-br-sm"
+            : "bg-slate-800 text-slate-100 rounded-bl-sm");
+        bubble.textContent = message.content;
+
+        if (message.role === "user") {
+          row.appendChild(bubble);
+        } else {
+          // Assistant row: bubble plus optional controls to the right
+          const contentWrap = document.createElement("div");
+          contentWrap.className = "flex items-center gap-1";
+          contentWrap.appendChild(bubble);
+
+          const controls = document.createElement("div");
+          controls.className = "flex items-center";
+          controls.dataset.assistantControls = "true";
+
+          contentWrap.appendChild(controls);
+          row.appendChild(contentWrap);
+        }
+
+        chatEl.appendChild(row);
+        chatEl.scrollTop = chatEl.scrollHeight;
+      }
+
+      function addConversationToList(conv) {
+        const existing = document.getElementById(`conv-${conv.id}`);
+        if (existing) {
+          existing.textContent = conv.title || "Conversation";
+          return;
+        }
+
+        const item = document.createElement("button");
+        item.id = `conv-${conv.id}`;
+        item.className = "text-left px-3 py-1.5 rounded-xl hover:bg-slate-900 text-xs border border-slate-800/60";
+        item.textContent = conv.title || "Conversation";
+        item.addEventListener("click", () => {
+          currentConversationId = conv.id;
+
+          // Reset chat to this conversation's messages
+          chatEl.innerHTML = "";
+          messages.length = 0;
+          conv.messages.forEach((m) => {
+            messages.push(m);
+            renderChatMessage(m);
+          });
+
+          // Show last analysis for this conversation if available
+          if (conv.lastAnalysis) {
+            renderCard(conv.lastAnalysis);
+          }
+        });
+
+        conversationsListEl.prepend(item);
+      }
+
+      function renderCard(analysis) {
+        const card = document.createElement("article");
+        card.className = "border-b border-slate-800 px-4 py-3 flex flex-col gap-2 hover:bg-black/40 transition";
+
+        const body = document.createElement("div");
+        body.className = "flex flex-col gap-1";
+
+        const header = document.createElement("div");
+        header.className = "flex items-center gap-2 text-xs text-slate-400";
+        header.innerHTML = `<span class="font-semibold text-slate-100">Insights</span>`;
+
+        const summary = document.createElement("p");
+        summary.className = "text-sm";
+        summary.textContent = analysis.insights?.summary || "No summary";
+
+        const meta = document.createElement("div");
+        meta.className = "mt-2 flex flex-wrap gap-2 text-[11px] text-slate-400";
+
+        if (analysis.insights?.sentiment) {
+          const badge = document.createElement("span");
+          const tone = analysis.insights.sentiment.overall;
+          const color = tone === "positive" ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" : tone === "negative" ? "bg-rose-500/20 text-rose-300 border-rose-500/40" : "bg-slate-500/20 text-slate-200 border-slate-500/40";
+          badge.className = `px-2 py-0.5 rounded-full border ${color}`;
+          badge.textContent = `Sentiment: ${tone} (${Math.round(analysis.insights.sentiment.score * 100)}%)`;
+          meta.appendChild(badge);
+        }
+
+        if (analysis.insights?.topics?.length) {
+          analysis.insights.topics.slice(0, 3).forEach((t) => {
+            const tag = document.createElement("span");
+            tag.className = "px-2 py-0.5 rounded-full border border-sky-500/40 bg-sky-500/10 text-sky-300";
+            tag.textContent = `#${t.label}`;
+            meta.appendChild(tag);
+          });
+        }
+
+        body.appendChild(header);
+        body.appendChild(summary);
+        body.appendChild(meta);
+        card.appendChild(body);
+
+        // Only show one analysis at a time
+        feedEl.innerHTML = "";
+        feedEl.appendChild(card);
+      }
+
+      async function fetchHistory() {
+        try {
+          const res = await fetch(`${apiBase}/insights?page=1&page_size=20`);
+          const data = await res.json();
+          historyLogEl.textContent = JSON.stringify(data, null, 2);
+        } catch (e) {
+          historyLogEl.textContent = String(e);
+        }
+      }
+
+      async function submitConversation() {
+        const text = chatInputEl.value.trim();
+        if (!text) return;
+        sendBtn.disabled = true;
+        statusText.textContent = "Sending and analyzing...";
+
+        const userMessage = { role: "user", content: text };
+        messages.push(userMessage);
+        renderChatMessage(userMessage);
+        chatInputEl.value = "";
+
+        const body = currentConversationId
+          ? { conversation_id: currentConversationId, messages }
+          : { messages };
+
+        const endpoint = `${apiBase}/insights`;
+        const method = "POST";
+        const started = performance.now();
+
+        try {
+          lastRequestBody = body;
+
+          const res = await fetch(endpoint, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const elapsed = Math.round(performance.now() - started);
+          apiMetaEl.textContent = `${method} ${endpoint} · ${res.status} ${res.statusText} · ${elapsed}ms`;
+          if (!res.ok) {
+            statusText.textContent = "Error from API";
+            apiLogEl.textContent = `Error response (status ${res.status}):\n`;
+            sendBtn.disabled = false;
+            return;
+          }
+          const data = await res.json();
+
+          if (data.assistant_message) {
+            const aiMessage = { role: "agent", content: data.assistant_message };
+            messages.push(aiMessage);
+            renderChatMessage(aiMessage);
+
+            // Attach a small icon button to the right of the latest assistant bubble
+            const controlsList = chatEl.querySelectorAll('[data-assistant-controls="true"]');
+            const lastControls = controlsList[controlsList.length - 1];
+            if (lastControls) {
+              const analysisButton = document.createElement("button");
+              analysisButton.className = "ml-1 w-6 h-6 flex items-center justify-center rounded-full border border-sky-500/60 text-sky-300 hover:bg-sky-500/10 text-[10px]";
+              analysisButton.setAttribute("title", "View analysis for this turn");
+              analysisButton.textContent = "i";
+              analysisButton.addEventListener("click", () => {
+                renderCard(data);
+              });
+              lastControls.innerHTML = "";
+              lastControls.appendChild(analysisButton);
+            }
+          }
+
+          // Track conversation locally for "My conversations" list
+          const convId = data.conversation_id || currentConversationId || `local-${Date.now()}`;
+          currentConversationId = convId;
+          const firstUserMessage = messages.find((m) => m.role === "user");
+          const title = firstUserMessage ? firstUserMessage.content.slice(0, 40) : "Conversation";
+
+          if (conversations[convId]) {
+            conversations[convId].title = title;
+            conversations[convId].messages = [...messages];
+            conversations[convId].lastAnalysis = data;
+          } else {
+            conversations[convId] = {
+              id: convId,
+              title,
+              messages: [...messages],
+              lastAnalysis: data,
+            };
+          }
+
+          addConversationToList(conversations[convId]);
+
+          apiLogEl.textContent = [
+            "// Request body",
+            JSON.stringify(lastRequestBody, null, 2),
+            "",
+            "// Response body",
+            JSON.stringify(data, null, 2),
+          ].join("\n");
+
+          // Automatically show latest analysis in right-hand insights panel
+          renderCard(data);
+
+          statusText.textContent = "Done";
+        } catch (e) {
+          statusText.textContent = "Network error";
+          apiMetaEl.textContent = `${method} ${endpoint} · network error`;
+          apiLogEl.textContent = String(e);
+        } finally {
+          sendBtn.disabled = false;
+        }
+      }
+
+      sendBtn.addEventListener("click", submitConversation);
+
+      chatInputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          submitConversation();
+        }
+      });
+
+      historyRefreshBtn.addEventListener("click", fetchHistory);
+
+      newConversationBtn.addEventListener("click", () => {
+        // Reset to a fresh conversation context
+        currentConversationId = null;
+        messages.length = 0;
+        chatEl.innerHTML = "";
+        feedEl.innerHTML = "";
+        statusText.textContent = "";
+      });
+    </script>
+  </body>
+</html>
